@@ -75,6 +75,10 @@ impl App {
     ) -> Result<bool> {
         self.status = None;
 
+        if key.code == KeyCode::Char('q') && key.modifiers == crossterm::event::KeyModifiers::CONTROL {
+            return Ok(false);
+        }
+
         // Take ownership of the current screen to avoid borrow conflicts.
         let screen = std::mem::replace(
             &mut self.screen,
@@ -432,6 +436,10 @@ mod tests {
         KeyEvent { code, modifiers: KeyModifiers::NONE, kind: KeyEventKind::Press, state: KeyEventState::NONE }
     }
 
+    fn ctrl(code: KeyCode) -> KeyEvent {
+        KeyEvent { code, modifiers: KeyModifiers::CONTROL, kind: KeyEventKind::Press, state: KeyEventState::NONE }
+    }
+
     fn make_terminal() -> Terminal<TestBackend> {
         Terminal::new(TestBackend::new(80, 24)).unwrap()
     }
@@ -569,5 +577,45 @@ mod tests {
         app.handle_key(key(KeyCode::Down), &mut t).await.unwrap();
         app.handle_key(key(KeyCode::Up), &mut t).await.unwrap();
         assert_eq!(form(&app).active_field, 0);
+    }
+
+    // ── Global Ctrl+Q ───────────────────────────────────────────────────────────
+
+    #[tokio::test]
+    async fn ctrl_q_quits_from_create_connection() {
+        let mut app = in_create_connection();
+        let result = app.handle_key(ctrl(KeyCode::Char('q')), &mut make_terminal()).await.unwrap();
+        assert!(!result);
+    }
+
+    #[tokio::test]
+    async fn ctrl_q_quits_from_query_list() {
+        let mut app = App {
+            screen: Screen::QueryList { connection: "db".to_string(), queries: vec![], selected: 0 },
+            status: None,
+        };
+        let result = app.handle_key(ctrl(KeyCode::Char('q')), &mut make_terminal()).await.unwrap();
+        assert!(!result);
+    }
+
+    #[tokio::test]
+    async fn ctrl_q_quits_from_results() {
+        let mut app = App {
+            screen: Screen::Results {
+                connection: "db".to_string(),
+                query: "q".to_string(),
+                result: crate::models::QueryResult::AffectedRows(0),
+            },
+            status: None,
+        };
+        let result = app.handle_key(ctrl(KeyCode::Char('q')), &mut make_terminal()).await.unwrap();
+        assert!(!result);
+    }
+
+    #[tokio::test]
+    async fn plain_q_does_not_quit_from_create_connection() {
+        let mut app = in_create_connection();
+        let result = app.handle_key(key(KeyCode::Char('q')), &mut make_terminal()).await.unwrap();
+        assert!(result);
     }
 }
