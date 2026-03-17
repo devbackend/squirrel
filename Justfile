@@ -19,9 +19,9 @@ release bump:
     version="$major.$minor.$patch"
     echo "Releasing v$version (was v$current)..."
 
-    sed -i '' "s/^version = \".*\"/version = \"$version\"/" Cargo.toml
     cargo clippy --quiet -- -D warnings
     cargo test --quiet
+    sed -i '' "s/^version = \".*\"/version = \"$version\"/" Cargo.toml
     git add Cargo.toml Cargo.lock
     git commit -m "chore: release v$version"
     git tag "v$version"
