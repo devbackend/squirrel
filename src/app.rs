@@ -348,7 +348,7 @@ impl App {
                         Ok(result) => {
                             return Ok(Some(Screen::Results { connection, query, result }));
                         }
-                        Err(e) => self.status = Some(format!("Error: {e}")),
+                        Err(e) => self.status = Some(format!("Error: {e:#}")),
                     },
                     Err(e) => self.status = Some(format!("Cannot load connection: {e}")),
                 }
