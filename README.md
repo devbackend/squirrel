@@ -1,102 +1,62 @@
+<p align="center">
+  <img src="assets/logo.png" alt="Squirrel" width="200"/>
+</p>
+
 # Squirrel
 
 A terminal UI (TUI) client for PostgreSQL. Manage named connections and saved SQL queries, then run them against a database — all from the terminal.
 
-## Requirements
+<p align="center">
+  <a href="LICENSE"><img src="https://img.shields.io/badge/License-MIT-yellow.svg" alt="License: MIT"/></a>
+  <a href="https://github.com/devbackend/squirrel/releases"><img src="https://img.shields.io/github/v/release/devbackend/squirrel" alt="GitHub release"/></a>
+</p>
 
-- Rust (stable)
-- A running PostgreSQL instance
-
-## Installation
+## Quick Start
 
 ```bash
-git clone <repo>
+# 1. Clone and install
+git clone https://github.com/devbackend/squirrel
 cd squirrel
-cargo build --release
-```
-
-Run directly:
-
-```bash
-cargo run
-```
-
-Or install to `~/.cargo/bin`:
-
-```bash
 cargo install --path .
+
+# 2. Launch
 squirrel
+
+# 3. Press `n` to add your first connection and you're in
 ```
 
-## Usage
+> Requires Rust (stable) and a running PostgreSQL instance.
 
-### Navigation
+## How it works
 
-All navigation uses keyboard only.
+**Add a connection** — press `n` on the connections screen, fill in the fields (host, port, database, credentials). Squirrel tests the connection before saving, so you know it works right away.
 
-| Key | Action |
-|-----|--------|
-| `j` / `↓` | Move down |
-| `k` / `↑` | Move up |
-| `Enter` | Select / confirm |
-| `Esc` / `q` | Back / quit |
+**Save a query** — open a connection, press `n` to create a new query, give it a name. Your `$EDITOR` opens automatically — write the SQL, save and close.
 
-### Connections screen (startup)
+**Run it** — select the query, press `Enter`. Results appear in a paginated table. Non-SELECT statements show the number of affected rows.
 
-| Key | Action |
-|-----|--------|
-| `n` | Create new connection |
-| `e` | Edit connection config in `$EDITOR` |
-| `d` | Delete connection |
-| `Enter` | Open query list for this connection |
-| `q` | Quit |
+**Edit anytime** — press `e` on any connection or query to open it in your editor. Squirrel steps aside and comes back when you're done.
 
-### Creating a connection
+## Keyboard shortcuts
 
-Fill in the 6 fields (Name, Host, Port, Database, Username, Password). Navigate between fields with `Tab` / `↑↓`. Press `Enter` on the last field to test and save the connection. The app verifies connectivity before saving.
-
-### Query list screen
-
-| Key | Action |
-|-----|--------|
-| `n` | Create new query (prompts for name, then opens `$EDITOR`) |
-| `d` | Delete query |
-| `Enter` | Open query |
-| `←` / `h` / `Esc` | Back to connections |
-
-### Query view screen
-
-| Key | Action |
-|-----|--------|
-| `Enter` | Run query |
-| `e` | Edit SQL in `$EDITOR` |
-| `q` / `Esc` | Back to query list |
-
-### Results screen
-
-| Key | Action |
-|-----|--------|
-| `l` / `→` | Next page |
-| `h` / `←` | Previous page |
-| `q` / `Esc` | Back to query view |
-
-Results are paginated at 20 rows per page. Non-SELECT statements show the number of affected rows.
-
-## Data storage
-
-All data is stored locally under `~/.squirrel/`:
-
-```
-~/.squirrel/
-  connections/
-    <name>/
-      config.toml    # connection credentials
-      queries/
-        <query>.sql  # saved SQL files
-```
-
-You can edit `config.toml` directly or use the `e` key in the app.
+| Screen | Key | Action |
+|--------|-----|--------|
+| Any | `j` / `k` or `↑` / `↓` | Navigate up / down |
+| Any | `Esc` / `q` | Go back |
+| Connections | `n` | New connection |
+| Connections | `e` | Edit connection in `$EDITOR` |
+| Connections | `d` | Delete connection |
+| Connections | `Enter` | Open queries |
+| Create connection | `Enter` | Start / finish editing a field |
+| Create connection | `s` | Test & save |
+| Queries | `n` | New query |
+| Queries | `d` | Delete query |
+| Queries | `Enter` | Open query |
+| Query view | `Enter` | Run query |
+| Query view | `e` | Edit SQL in `$EDITOR` |
+| Results | `l` / `→` | Next page |
+| Results | `h` / `←` | Previous page |
 
 ## Editor integration
 
-Squirrel uses `$EDITOR` (falling back to `$VISUAL`, then `vi`) to edit SQL files and connection configs. The TUI suspends while the editor is open and resumes when you close it.
+Squirrel uses `$EDITOR` (falling back to `$VISUAL`, then `vi`). The TUI suspends while the editor is open and resumes when you close it.
