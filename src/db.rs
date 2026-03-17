@@ -1,5 +1,6 @@
 use anyhow::{Context, Result};
 use chrono::{DateTime, NaiveDate, NaiveDateTime, NaiveTime, Utc};
+use uuid::Uuid;
 use tokio_postgres::{types::Type, NoTls};
 
 use crate::models::{ConnectionConfig, QueryResult};
@@ -101,9 +102,11 @@ fn row_value_to_string(row: &tokio_postgres::Row, col_idx: usize) -> String {
         try_as!(DateTime<Utc>);
     } else if t == &Type::TIME {
         try_as!(NaiveTime);
+    } else if t == &Type::UUID {
+        try_as!(Uuid);
     }
 
-    // Default: String — covers TEXT, VARCHAR, BPCHAR, NAME, UUID, NUMERIC, etc.
+    // Default: String — covers TEXT, VARCHAR, BPCHAR, NAME, NUMERIC, etc.
     row.try_get::<_, Option<String>>(col_idx)
         .ok()
         .flatten()
