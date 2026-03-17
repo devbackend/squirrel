@@ -42,7 +42,24 @@ pub struct App {
 }
 
 impl App {
-    pub fn new() -> Result<Self> {
+    pub fn new(connection: Option<&str>, query: Option<&str>) -> Result<Self> {
+        if let Some(conn) = connection
+            && let Ok(cfg) = storage::load_connection(conn) {
+                let conn = cfg.name.clone();
+                if let Some(qname) = query
+                    && let Ok(content) = storage::load_query(&conn, qname) {
+                        return Ok(Self {
+                            screen: Screen::QueryView { connection: conn, query: qname.to_string(), content },
+                            status: None,
+                        });
+                    }
+                let queries = storage::list_queries(&conn)?;
+                return Ok(Self {
+                    screen: Screen::QueryList { connection: conn, queries, selected: 0 },
+                    status: None,
+                });
+            }
+
         let connections = storage::list_connections()?;
         Ok(Self {
             screen: Screen::ConnectionList { connections, selected: 0 },
@@ -176,7 +193,10 @@ impl App {
         if form.editing {
             match key.code {
                 KeyCode::Esc | KeyCode::Enter => form.editing = false,
-                KeyCode::Char(c) => form.active_value_mut().push(c),
+                KeyCode::Char(c) => {
+                    let c = if form.active_field == 0 && c == ' ' { '_' } else { c };
+                    form.active_value_mut().push(c);
+                }
                 KeyCode::Backspace => { form.active_value_mut().pop(); }
                 _ => {}
             }
@@ -297,7 +317,7 @@ impl App {
                 }
             }
 
-            KeyCode::Char(c) => input.push(c),
+            KeyCode::Char(c) => input.push(if c == ' ' { '_' } else { c }),
             KeyCode::Backspace => { input.pop(); }
 
             _ => {}

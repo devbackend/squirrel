@@ -129,6 +129,9 @@ impl ConnectionForm {
         if self.values[0].is_empty() {
             return Err("Name is required".to_string());
         }
+        if self.values[0].contains(' ') {
+            return Err("Name must not contain spaces".to_string());
+        }
         let port = self.values[2]
             .parse::<u16>()
             .map_err(|_| "Port must be a number (1–65535)".to_string())?;
