@@ -8,7 +8,7 @@ A terminal UI (TUI) client for PostgreSQL. Manage named connections and saved SQ
 
 <p align="center">
   <a href="LICENSE"><img src="https://img.shields.io/badge/License-MIT-yellow.svg" alt="License: MIT"/></a>
-  <a href="https://github.com/devbackend/squirrel/releases"><img src="https://img.shields.io/github/v/release/devbackend/squirrel" alt="GitHub release"/></a>
+  <a href="https://github.com/devbackend/squirrel/tags"><img src="https://img.shields.io/github/v/tag/devbackend/squirrel" alt="version"/></a>
 </p>
 
 ## Quick Start
