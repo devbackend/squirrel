@@ -38,22 +38,28 @@ pub fn render(f: &mut Frame, screen: &Screen, status: Option<&str>) {
             };
             render_hint(f, status_area, hint, status);
         }
-        Screen::QueryList { connection, queries, selected } => {
+        Screen::QueryList { connection, queries, selected, preview } => {
+            let panes = Layout::default()
+                .direction(Direction::Horizontal)
+                .constraints([Constraint::Percentage(40), Constraint::Percentage(60)])
+                .split(main_area);
+
             let title = format!(" Queries — {connection} ");
-            render_list(f, main_area, &title, queries, *selected);
-            render_hint(f, status_area, "n: new  d: delete  Enter: open  ←/Esc: back", status);
+            render_list(f, panes[0], &title, queries, *selected);
+
+            let preview_title = queries.get(*selected)
+                .map(|q| format!(" {q} "))
+                .unwrap_or_else(|| " Preview ".to_string());
+            let preview_block = Paragraph::new(preview.as_str())
+                .block(Block::default().borders(Borders::ALL).title(preview_title))
+                .wrap(Wrap { trim: false });
+            f.render_widget(preview_block, panes[1]);
+
+            render_hint(f, status_area, "n: new  e: edit  d: delete  Enter/r: run  ←/Esc: back", status);
         }
         Screen::CreateQueryName { connection, input } => {
             render_name_input(f, main_area, connection, input);
             render_hint(f, status_area, "Enter: open editor  Esc: back", status);
-        }
-        Screen::QueryView { connection, query, content } => {
-            let title = format!(" {connection} › {query} ");
-            let paragraph = Paragraph::new(content.as_str())
-                .block(Block::default().borders(Borders::ALL).title(title))
-                .wrap(Wrap { trim: false });
-            f.render_widget(paragraph, main_area);
-            render_hint(f, status_area, "Enter: run  e: edit  q/Esc: back", status);
         }
         Screen::Results { connection, query, result } => {
             render_results(f, main_area, connection, query, result);

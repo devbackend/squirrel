@@ -19,15 +19,11 @@ pub enum Screen {
         connection: String,
         queries: Vec<String>,
         selected: usize,
+        preview: String,
     },
     CreateQueryName {
         connection: String,
         input: String,
-    },
-    QueryView {
-        connection: String,
-        query: String,
-        content: String,
     },
     Results {
         connection: String,
@@ -41,21 +37,24 @@ pub struct App {
     pub status: Option<String>,
 }
 
+fn load_preview(connection: &str, queries: &[String], selected: usize) -> String {
+    queries.get(selected)
+        .and_then(|q| storage::load_query(connection, q).ok())
+        .unwrap_or_default()
+}
+
 impl App {
     pub fn new(connection: Option<&str>, query: Option<&str>) -> Result<Self> {
         if let Some(conn) = connection
             && let Ok(cfg) = storage::load_connection(conn) {
                 let conn = cfg.name.clone();
-                if let Some(qname) = query
-                    && let Ok(content) = storage::load_query(&conn, qname) {
-                        return Ok(Self {
-                            screen: Screen::QueryView { connection: conn, query: qname.to_string(), content },
-                            status: None,
-                        });
-                    }
                 let queries = storage::list_queries(&conn)?;
+                let selected = query
+                    .and_then(|q| queries.iter().position(|name| name == q))
+                    .unwrap_or(0);
+                let preview = load_preview(&conn, &queries, selected);
                 return Ok(Self {
-                    screen: Screen::QueryList { connection: conn, queries, selected: 0 },
+                    screen: Screen::QueryList { connection: conn, queries, selected, preview },
                     status: None,
                 });
             }
@@ -92,14 +91,11 @@ impl App {
             Screen::CreateConnection { form, status } => {
                 self.on_create_connection(key, terminal, form, status).await?
             }
-            Screen::QueryList { connection, queries, selected } => {
-                self.on_query_list(key, terminal, connection, queries, selected).await?
+            Screen::QueryList { connection, queries, selected, preview } => {
+                self.on_query_list(key, terminal, connection, queries, selected, preview).await?
             }
             Screen::CreateQueryName { connection, input } => {
                 self.on_create_query_name(key, terminal, connection, input).await?
-            }
-            Screen::QueryView { connection, query, content } => {
-                self.on_query_view(key, terminal, connection, query, content).await?
             }
             Screen::Results { connection, query, result } => {
                 self.on_results(key, connection, query, result)
@@ -140,7 +136,8 @@ impl App {
                 if !connections.is_empty() {
                     let conn = connections[selected].clone();
                     let queries = storage::list_queries(&conn)?;
-                    return Ok(Some(Screen::QueryList { connection: conn, queries, selected: 0 }));
+                    let preview = load_preview(&conn, &queries, 0);
+                    return Ok(Some(Screen::QueryList { connection: conn, queries, selected: 0, preview }));
                 }
             }
 
@@ -240,31 +237,52 @@ impl App {
     async fn on_query_list<B: Backend>(
         &mut self,
         key: KeyEvent,
-        _terminal: &mut Terminal<B>,
+        terminal: &mut Terminal<B>,
         connection: String,
         mut queries: Vec<String>,
         mut selected: usize,
+        mut preview: String,
     ) -> Result<Option<Screen>> {
         match key.code {
-            KeyCode::Esc | KeyCode::Char('q') | KeyCode::Left | KeyCode::Char('h') => {
+            KeyCode::Esc | KeyCode::Left | KeyCode::Char('h') => {
                 let connections = storage::list_connections()?;
                 return Ok(Some(Screen::ConnectionList { connections, selected: 0 }));
             }
 
             KeyCode::Up | KeyCode::Char('k') => {
                 selected = selected.saturating_sub(1);
+                preview = load_preview(&connection, &queries, selected);
             }
             KeyCode::Down | KeyCode::Char('j') => {
                 if !queries.is_empty() && selected < queries.len() - 1 {
                     selected += 1;
+                    preview = load_preview(&connection, &queries, selected);
                 }
             }
 
-            KeyCode::Enter => {
+            KeyCode::Enter | KeyCode::Char('r') => {
                 if !queries.is_empty() {
                     let query = queries[selected].clone();
                     let content = storage::load_query(&connection, &query)?;
-                    return Ok(Some(Screen::QueryView { connection, query, content }));
+                    match storage::load_connection(&connection) {
+                        Ok(cfg) => match db::execute_query(&cfg, &content).await {
+                            Ok(result) => {
+                                return Ok(Some(Screen::Results { connection, query, result }));
+                            }
+                            Err(e) => self.status = Some(format!("Error: {e:#}")),
+                        },
+                        Err(e) => self.status = Some(format!("Cannot load connection: {e}")),
+                    }
+                }
+            }
+
+            KeyCode::Char('e') => {
+                if !queries.is_empty() {
+                    let query = &queries[selected];
+                    let path = storage::query_path(&connection, query);
+                    open_editor(&path)?;
+                    terminal.clear()?;
+                    preview = load_preview(&connection, &queries, selected);
                 }
             }
 
@@ -278,6 +296,7 @@ impl App {
                     storage::delete_query(&connection, &name)?;
                     queries = storage::list_queries(&connection)?;
                     selected = selected.min(queries.len().saturating_sub(1));
+                    preview = load_preview(&connection, &queries, selected);
                     self.status = Some(format!("Deleted query '{name}'"));
                 }
             }
@@ -285,7 +304,7 @@ impl App {
             _ => {}
         }
 
-        Ok(Some(Screen::QueryList { connection, queries, selected }))
+        Ok(Some(Screen::QueryList { connection, queries, selected, preview }))
     }
 
     // ── CreateQueryName ────────────────────────────────────────────────────────
@@ -300,7 +319,8 @@ impl App {
         match key.code {
             KeyCode::Esc => {
                 let queries = storage::list_queries(&connection)?;
-                return Ok(Some(Screen::QueryList { connection, queries, selected: 0 }));
+                let preview = load_preview(&connection, &queries, 0);
+                return Ok(Some(Screen::QueryList { connection, queries, selected: 0, preview }));
             }
 
             KeyCode::Enter => {
@@ -312,12 +332,12 @@ impl App {
                     terminal.clear()?;
                     let content = storage::load_query(&connection, &name).unwrap_or_default();
                     if content.trim().is_empty() {
-                        // User saved nothing — discard
                         let _ = storage::delete_query(&connection, &name);
-                        let queries = storage::list_queries(&connection)?;
-                        return Ok(Some(Screen::QueryList { connection, queries, selected: 0 }));
                     }
-                    return Ok(Some(Screen::QueryView { connection, query: name, content }));
+                    let queries = storage::list_queries(&connection)?;
+                    let selected = queries.iter().position(|q| q == &name).unwrap_or(0);
+                    let preview = load_preview(&connection, &queries, selected);
+                    return Ok(Some(Screen::QueryList { connection, queries, selected, preview }));
                 }
             }
 
@@ -328,48 +348,6 @@ impl App {
         }
 
         Ok(Some(Screen::CreateQueryName { connection, input }))
-    }
-
-    // ── QueryView ──────────────────────────────────────────────────────────────
-
-    async fn on_query_view<B: Backend>(
-        &mut self,
-        key: KeyEvent,
-        terminal: &mut Terminal<B>,
-        connection: String,
-        query: String,
-        content: String,
-    ) -> Result<Option<Screen>> {
-        match key.code {
-            KeyCode::Esc | KeyCode::Char('q') => {
-                let queries = storage::list_queries(&connection)?;
-                return Ok(Some(Screen::QueryList { connection, queries, selected: 0 }));
-            }
-
-            KeyCode::Enter => {
-                match storage::load_connection(&connection) {
-                    Ok(cfg) => match db::execute_query(&cfg, &content).await {
-                        Ok(result) => {
-                            return Ok(Some(Screen::Results { connection, query, result }));
-                        }
-                        Err(e) => self.status = Some(format!("Error: {e:#}")),
-                    },
-                    Err(e) => self.status = Some(format!("Cannot load connection: {e}")),
-                }
-            }
-
-            KeyCode::Char('e') => {
-                let path = storage::query_path(&connection, &query);
-                open_editor(&path)?;
-                terminal.clear()?;
-                let content = storage::load_query(&connection, &query).unwrap_or_default();
-                return Ok(Some(Screen::QueryView { connection, query, content }));
-            }
-
-            _ => {}
-        }
-
-        Ok(Some(Screen::QueryView { connection, query, content }))
     }
 
     // ── Results ────────────────────────────────────────────────────────────────
@@ -383,8 +361,10 @@ impl App {
     ) -> Option<Screen> {
         match key.code {
             KeyCode::Esc | KeyCode::Char('q') => {
-                let content = storage::load_query(&connection, &query).unwrap_or_default();
-                return Some(Screen::QueryView { connection, query, content });
+                let queries = storage::list_queries(&connection).unwrap_or_default();
+                let selected = queries.iter().position(|q| q == &query).unwrap_or(0);
+                let preview = load_preview(&connection, &queries, selected);
+                return Some(Screen::QueryList { connection, queries, selected, preview });
             }
             KeyCode::Right | KeyCode::Char('l') => result.next_page(),
             KeyCode::Left | KeyCode::Char('h') => result.prev_page(),
@@ -591,7 +571,7 @@ mod tests {
     #[tokio::test]
     async fn ctrl_q_quits_from_query_list() {
         let mut app = App {
-            screen: Screen::QueryList { connection: "db".to_string(), queries: vec![], selected: 0 },
+            screen: Screen::QueryList { connection: "db".to_string(), queries: vec![], selected: 0, preview: String::new() },
             status: None,
         };
         let result = app.handle_key(ctrl(KeyCode::Char('q')), &mut make_terminal()).await.unwrap();
