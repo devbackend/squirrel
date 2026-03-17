@@ -3,7 +3,7 @@ use ratatui::{
     layout::{Constraint, Direction, Layout, Rect},
     style::{Color, Modifier, Style},
     text::{Line, Span},
-    widgets::{Block, Borders, Cell, Clear, List, ListItem, Paragraph, Row, Table, Wrap},
+    widgets::{Block, Borders, Cell, Clear, List, ListItem, Paragraph, Row, Table, TableState, Wrap},
 };
 
 use crate::{
@@ -63,7 +63,7 @@ pub fn render(f: &mut Frame, screen: &Screen, status: Option<&str>) {
         }
         Screen::Results { connection, query, result } => {
             render_results(f, main_area, connection, query, result);
-            render_hint(f, status_area, "←h / →l: page  q/Esc: back", status);
+            render_hint(f, status_area, "j/k: row  ←h/→l: page  q/Esc: back", status);
         }
     }
 }
@@ -189,6 +189,9 @@ fn render_name_input(f: &mut Frame, area: Rect, connection: &str, input: &str) {
 
 // ── Results ────────────────────────────────────────────────────────────────────
 
+/// Alternating dark background for zebra-striped even rows.
+const ZEBRA_BG: Color = Color::Rgb(30, 30, 40);
+
 fn render_results(
     f: &mut Frame,
     area: Rect,
@@ -205,7 +208,7 @@ fn render_results(
                 .style(Style::default().fg(Color::Green));
             f.render_widget(paragraph, area);
         }
-        QueryResult::Rows { columns, rows, page, page_size: _ } => {
+        QueryResult::Rows { columns, rows, page, page_size: _, selected_row } => {
             let page_count = result.page_count();
             let title = format!(
                 " {connection} › {query} — {} rows (page {}/{page_count}) ",
@@ -223,7 +226,7 @@ fn render_results(
 
             let page_rows = result.current_page_rows();
 
-            // Compute column widths: max of header and data, capped at 30
+            // Compute column widths: max of header and data, capped at 30.
             let col_widths: Vec<usize> = columns
                 .iter()
                 .enumerate()
@@ -236,31 +239,53 @@ fn render_results(
             let constraints: Vec<Constraint> =
                 col_widths.iter().map(|w| Constraint::Min(*w as u16)).collect();
 
+            // Header row — bold yellow, with a blank margin row beneath it.
             let header = Row::new(columns.iter().map(|c| {
                 Cell::from(c.as_str())
                     .style(Style::default().add_modifier(Modifier::BOLD).fg(Color::Yellow))
             }))
             .bottom_margin(1);
 
+            // Data rows with zebra striping.  Even rows (0-indexed) get a
+            // subtle dark background; NULL values are rendered in dim grey.
             let table_rows: Vec<Row> = page_rows
                 .iter()
-                .map(|row| {
+                .enumerate()
+                .map(|(row_idx, row)| {
+                    let row_bg = if row_idx % 2 == 1 {
+                        Style::default().bg(ZEBRA_BG)
+                    } else {
+                        Style::default()
+                    };
                     Row::new(row.iter().map(|cell| {
-                        let style = if cell == "NULL" {
+                        let cell_style = if cell == "NULL" {
                             Style::default().fg(Color::DarkGray)
                         } else {
                             Style::default()
                         };
-                        Cell::from(cell.as_str()).style(style)
+                        Cell::from(cell.as_str()).style(cell_style)
                     }))
+                    .style(row_bg)
                 })
                 .collect();
 
             let table = Table::new(table_rows, constraints)
                 .header(header)
-                .block(Block::default().borders(Borders::ALL).title(title));
+                .block(Block::default().borders(Borders::ALL).title(title))
+                // Highlight style for the selected row: cyan foreground, bold.
+                .row_highlight_style(
+                    Style::default()
+                        .fg(Color::Cyan)
+                        .add_modifier(Modifier::BOLD),
+                )
+                // A leading marker so the selected row is visually distinct
+                // even on terminals where colour support is limited.
+                .highlight_symbol("▶ ");
 
-            f.render_widget(table, area);
+            let mut state = TableState::default();
+            state.select(Some(*selected_row));
+
+            f.render_stateful_widget(table, area, &mut state);
         }
     }
 }

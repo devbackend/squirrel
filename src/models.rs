@@ -26,6 +26,8 @@ pub enum QueryResult {
         rows: Vec<Vec<String>>,
         page: usize,
         page_size: usize,
+        /// Index of the highlighted row within the current page (0-based).
+        selected_row: usize,
     },
     AffectedRows(u64),
 }
@@ -54,6 +56,15 @@ impl QueryResult {
         }
     }
 
+    /// Returns the index of the selected row within the current page.
+    #[allow(dead_code)]
+    pub fn selected_row(&self) -> usize {
+        match self {
+            QueryResult::Rows { selected_row, .. } => *selected_row,
+            QueryResult::AffectedRows(_) => 0,
+        }
+    }
+
     pub fn current_page_rows(&self) -> &[Vec<String>] {
         match self {
             QueryResult::Rows { rows, page, page_size, .. } => {
@@ -66,19 +77,41 @@ impl QueryResult {
     }
 
     pub fn next_page(&mut self) {
-        if let QueryResult::Rows { page, page_size, rows, .. } = self {
+        if let QueryResult::Rows { page, page_size, rows, selected_row, .. } = self {
             let max_page = if rows.is_empty() { 0 } else { (rows.len() - 1) / *page_size };
             if *page < max_page {
                 *page += 1;
+                *selected_row = 0;
             }
         }
     }
 
     pub fn prev_page(&mut self) {
-        if let QueryResult::Rows { page, .. } = self
-            && *page > 0 {
-                *page -= 1;
+        if let QueryResult::Rows { page, selected_row, .. } = self
+            && *page > 0
+        {
+            *page -= 1;
+            *selected_row = 0;
+        }
+    }
+
+    /// Move the row selection down by one within the current page.
+    pub fn select_next_row(&mut self) {
+        if let QueryResult::Rows { rows, page, page_size, selected_row, .. } = self {
+            let start = *page * *page_size;
+            let end = (start + *page_size).min(rows.len());
+            let page_len = end - start;
+            if page_len > 0 && *selected_row < page_len - 1 {
+                *selected_row += 1;
             }
+        }
+    }
+
+    /// Move the row selection up by one within the current page.
+    pub fn select_prev_row(&mut self) {
+        if let QueryResult::Rows { selected_row, .. } = self {
+            *selected_row = selected_row.saturating_sub(1);
+        }
     }
 }
 
@@ -247,12 +280,13 @@ mod tests {
             rows: (0..count).map(|i| vec![i.to_string()]).collect(),
             page: 0,
             page_size: 20,
+            selected_row: 0,
         }
     }
 
     #[test]
     fn page_count_empty() {
-        let r = QueryResult::Rows { columns: vec![], rows: vec![], page: 0, page_size: 20 };
+        let r = QueryResult::Rows { columns: vec![], rows: vec![], page: 0, page_size: 20, selected_row: 0 };
         assert_eq!(r.page_count(), 1);
     }
 
@@ -294,5 +328,53 @@ mod tests {
         let mut r = rows_result(25);
         r.prev_page(); // should not underflow
         assert_eq!(r.current_page(), 0);
+    }
+
+    #[test]
+    fn select_next_row_advances() {
+        let mut r = rows_result(5);
+        r.select_next_row();
+        assert_eq!(r.selected_row(), 1);
+        r.select_next_row();
+        assert_eq!(r.selected_row(), 2);
+    }
+
+    #[test]
+    fn select_next_row_clamps_at_last() {
+        let mut r = rows_result(3);
+        r.select_next_row();
+        r.select_next_row();
+        r.select_next_row(); // should not go past index 2
+        assert_eq!(r.selected_row(), 2);
+    }
+
+    #[test]
+    fn select_prev_row_decrements() {
+        let mut r = rows_result(5);
+        r.select_next_row();
+        r.select_next_row();
+        r.select_prev_row();
+        assert_eq!(r.selected_row(), 1);
+    }
+
+    #[test]
+    fn select_prev_row_clamps_at_zero() {
+        let mut r = rows_result(5);
+        r.select_prev_row(); // should not underflow
+        assert_eq!(r.selected_row(), 0);
+    }
+
+    #[test]
+    fn page_change_resets_selected_row() {
+        let mut r = rows_result(25);
+        r.select_next_row();
+        r.select_next_row();
+        assert_eq!(r.selected_row(), 2);
+        r.next_page();
+        assert_eq!(r.selected_row(), 0);
+        r.select_next_row();
+        assert_eq!(r.selected_row(), 1);
+        r.prev_page();
+        assert_eq!(r.selected_row(), 0);
     }
 }

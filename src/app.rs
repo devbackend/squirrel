@@ -368,6 +368,8 @@ impl App {
             }
             KeyCode::Right | KeyCode::Char('l') => result.next_page(),
             KeyCode::Left | KeyCode::Char('h') => result.prev_page(),
+            KeyCode::Down | KeyCode::Char('j') => result.select_next_row(),
+            KeyCode::Up | KeyCode::Char('k') => result.select_prev_row(),
             _ => {}
         }
 

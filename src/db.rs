@@ -45,6 +45,7 @@ pub async fn execute_query(cfg: &ConnectionConfig, sql: &str) -> Result<QueryRes
                 rows: vec![],
                 page: 0,
                 page_size: QueryResult::PAGE_SIZE,
+                selected_row: 0,
             });
         }
 
@@ -64,6 +65,7 @@ pub async fn execute_query(cfg: &ConnectionConfig, sql: &str) -> Result<QueryRes
             rows: data_rows,
             page: 0,
             page_size: QueryResult::PAGE_SIZE,
+            selected_row: 0,
         })
     } else {
         let n = client.execute(sql, &[]).await.context("executing statement")?;
