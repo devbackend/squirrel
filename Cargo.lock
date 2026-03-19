@@ -686,6 +686,8 @@ dependencies = [
  "chrono",
  "fallible-iterator",
  "postgres-protocol",
+ "serde_core",
+ "serde_json",
  "uuid",
 ]
 
@@ -971,13 +973,14 @@ dependencies = [
 
 [[package]]
 name = "squirrel"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "anyhow",
  "chrono",
  "crossterm",
  "ratatui",
  "serde",
+ "serde_json",
  "tempfile",
  "tokio",
  "tokio-postgres",

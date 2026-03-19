@@ -1,5 +1,6 @@
 use anyhow::{Context, Result};
 use chrono::{DateTime, NaiveDate, NaiveDateTime, NaiveTime, Utc};
+use serde_json::Value as JsonValue;
 use uuid::Uuid;
 use tokio_postgres::{types::Type, NoTls};
 
@@ -106,6 +107,10 @@ fn row_value_to_string(row: &tokio_postgres::Row, col_idx: usize) -> String {
         try_as!(NaiveTime);
     } else if t == &Type::UUID {
         try_as!(Uuid);
+    } else if (t == &Type::JSON || t == &Type::JSONB)
+        && let Ok(val) = row.try_get::<_, Option<JsonValue>>(col_idx)
+    {
+        return val.map_or_else(|| "NULL".to_string(), |v| v.to_string());
     }
 
     // Default: String — covers TEXT, VARCHAR, BPCHAR, NAME, NUMERIC, etc.
