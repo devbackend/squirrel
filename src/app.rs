@@ -126,19 +126,15 @@ impl App {
             KeyCode::Up | KeyCode::Char('k') => {
                 selected = selected.saturating_sub(1);
             }
-            KeyCode::Down | KeyCode::Char('j') => {
-                if !connections.is_empty() && selected < connections.len() - 1 {
-                    selected += 1;
-                }
+            KeyCode::Down | KeyCode::Char('j') if !connections.is_empty() && selected < connections.len() - 1 => {
+                selected += 1;
             }
 
-            KeyCode::Enter => {
-                if !connections.is_empty() {
-                    let conn = connections[selected].clone();
-                    let queries = storage::list_queries(&conn)?;
-                    let preview = load_preview(&conn, &queries, 0);
-                    return Ok(Some(Screen::QueryList { connection: conn, queries, selected: 0, preview }));
-                }
+            KeyCode::Enter if !connections.is_empty() => {
+                let conn = connections[selected].clone();
+                let queries = storage::list_queries(&conn)?;
+                let preview = load_preview(&conn, &queries, 0);
+                return Ok(Some(Screen::QueryList { connection: conn, queries, selected: 0, preview }));
             }
 
             KeyCode::Char('n') => {
@@ -148,32 +144,28 @@ impl App {
                 }));
             }
 
-            KeyCode::Char('d') => {
-                if !connections.is_empty() {
-                    let name = connections[selected].clone();
-                    storage::delete_connection(&name)?;
-                    connections = storage::list_connections()?;
-                    selected = selected.min(connections.len().saturating_sub(1));
-                    self.status = Some(format!("Deleted '{name}'"));
-                }
+            KeyCode::Char('d') if !connections.is_empty() => {
+                let name = connections[selected].clone();
+                storage::delete_connection(&name)?;
+                connections = storage::list_connections()?;
+                selected = selected.min(connections.len().saturating_sub(1));
+                self.status = Some(format!("Deleted '{name}'"));
             }
 
-            KeyCode::Char('e') => {
-                if !connections.is_empty() {
-                    let name = connections[selected].clone();
-                    let path = storage::connection_config_path(&name);
-                    open_editor(&path)?;
-                    terminal.clear()?;
-                    match storage::load_connection(&name) {
-                        Ok(cfg) => match db::test_connection(&cfg).await {
-                            Ok(()) => self.status = Some(format!("'{name}' saved, connection OK")),
-                            Err(e) => self.status = Some(format!("Saved but connection failed: {e}")),
-                        },
-                        Err(e) => self.status = Some(format!("Error parsing config: {e}")),
-                    }
-                    connections = storage::list_connections()?;
-                    selected = selected.min(connections.len().saturating_sub(1));
+            KeyCode::Char('e') if !connections.is_empty() => {
+                let name = connections[selected].clone();
+                let path = storage::connection_config_path(&name);
+                open_editor(&path)?;
+                terminal.clear()?;
+                match storage::load_connection(&name) {
+                    Ok(cfg) => match db::test_connection(&cfg).await {
+                        Ok(()) => self.status = Some(format!("'{name}' saved, connection OK")),
+                        Err(e) => self.status = Some(format!("Saved but connection failed: {e}")),
+                    },
+                    Err(e) => self.status = Some(format!("Error parsing config: {e}")),
                 }
+                connections = storage::list_connections()?;
+                selected = selected.min(connections.len().saturating_sub(1));
             }
 
             _ => {}
@@ -253,52 +245,44 @@ impl App {
                 selected = selected.saturating_sub(1);
                 preview = load_preview(&connection, &queries, selected);
             }
-            KeyCode::Down | KeyCode::Char('j') => {
-                if !queries.is_empty() && selected < queries.len() - 1 {
-                    selected += 1;
-                    preview = load_preview(&connection, &queries, selected);
+            KeyCode::Down | KeyCode::Char('j') if !queries.is_empty() && selected < queries.len() - 1 => {
+                selected += 1;
+                preview = load_preview(&connection, &queries, selected);
+            }
+
+            KeyCode::Enter | KeyCode::Char('r') if !queries.is_empty() => {
+                let query = queries[selected].clone();
+                let content = storage::load_query(&connection, &query)?;
+                match storage::load_connection(&connection) {
+                    Ok(cfg) => match db::execute_query(&cfg, &content).await {
+                        Ok(result) => {
+                            return Ok(Some(Screen::Results { connection, query, result }));
+                        }
+                        Err(e) => self.status = Some(format!("Error: {e:#}")),
+                    },
+                    Err(e) => self.status = Some(format!("Cannot load connection: {e}")),
                 }
             }
 
-            KeyCode::Enter | KeyCode::Char('r') => {
-                if !queries.is_empty() {
-                    let query = queries[selected].clone();
-                    let content = storage::load_query(&connection, &query)?;
-                    match storage::load_connection(&connection) {
-                        Ok(cfg) => match db::execute_query(&cfg, &content).await {
-                            Ok(result) => {
-                                return Ok(Some(Screen::Results { connection, query, result }));
-                            }
-                            Err(e) => self.status = Some(format!("Error: {e:#}")),
-                        },
-                        Err(e) => self.status = Some(format!("Cannot load connection: {e}")),
-                    }
-                }
-            }
-
-            KeyCode::Char('e') => {
-                if !queries.is_empty() {
-                    let query = &queries[selected];
-                    let path = storage::query_path(&connection, query);
-                    open_editor(&path)?;
-                    terminal.clear()?;
-                    preview = load_preview(&connection, &queries, selected);
-                }
+            KeyCode::Char('e') if !queries.is_empty() => {
+                let query = &queries[selected];
+                let path = storage::query_path(&connection, query);
+                open_editor(&path)?;
+                terminal.clear()?;
+                preview = load_preview(&connection, &queries, selected);
             }
 
             KeyCode::Char('n') => {
                 return Ok(Some(Screen::CreateQueryName { connection, input: String::new() }));
             }
 
-            KeyCode::Char('d') => {
-                if !queries.is_empty() {
-                    let name = queries[selected].clone();
-                    storage::delete_query(&connection, &name)?;
-                    queries = storage::list_queries(&connection)?;
-                    selected = selected.min(queries.len().saturating_sub(1));
-                    preview = load_preview(&connection, &queries, selected);
-                    self.status = Some(format!("Deleted query '{name}'"));
-                }
+            KeyCode::Char('d') if !queries.is_empty() => {
+                let name = queries[selected].clone();
+                storage::delete_query(&connection, &name)?;
+                queries = storage::list_queries(&connection)?;
+                selected = selected.min(queries.len().saturating_sub(1));
+                preview = load_preview(&connection, &queries, selected);
+                self.status = Some(format!("Deleted query '{name}'"));
             }
 
             _ => {}
@@ -323,22 +307,20 @@ impl App {
                 return Ok(Some(Screen::QueryList { connection, queries, selected: 0, preview }));
             }
 
-            KeyCode::Enter => {
-                if !input.is_empty() {
-                    let name = input.trim().to_string();
-                    storage::save_query(&connection, &name, "")?;
-                    let path = storage::query_path(&connection, &name);
-                    open_editor(&path)?;
-                    terminal.clear()?;
-                    let content = storage::load_query(&connection, &name).unwrap_or_default();
-                    if content.trim().is_empty() {
-                        let _ = storage::delete_query(&connection, &name);
-                    }
-                    let queries = storage::list_queries(&connection)?;
-                    let selected = queries.iter().position(|q| q == &name).unwrap_or(0);
-                    let preview = load_preview(&connection, &queries, selected);
-                    return Ok(Some(Screen::QueryList { connection, queries, selected, preview }));
+            KeyCode::Enter if !input.is_empty() => {
+                let name = input.trim().to_string();
+                storage::save_query(&connection, &name, "")?;
+                let path = storage::query_path(&connection, &name);
+                open_editor(&path)?;
+                terminal.clear()?;
+                let content = storage::load_query(&connection, &name).unwrap_or_default();
+                if content.trim().is_empty() {
+                    let _ = storage::delete_query(&connection, &name);
                 }
+                let queries = storage::list_queries(&connection)?;
+                let selected = queries.iter().position(|q| q == &name).unwrap_or(0);
+                let preview = load_preview(&connection, &queries, selected);
+                return Ok(Some(Screen::QueryList { connection, queries, selected, preview }));
             }
 
             KeyCode::Char(c) => input.push(if c == ' ' { '_' } else { c }),

@@ -1,5 +1,6 @@
 use anyhow::{Context, Result};
 use chrono::{DateTime, NaiveDate, NaiveDateTime, NaiveTime, Utc};
+use rust_decimal::Decimal;
 use serde_json::Value as JsonValue;
 use uuid::Uuid;
 use tokio_postgres::{types::Type, NoTls};
@@ -97,6 +98,8 @@ fn row_value_to_string(row: &tokio_postgres::Row, col_idx: usize) -> String {
         try_as!(f32);
     } else if t == &Type::FLOAT8 {
         try_as!(f64);
+    } else if t == &Type::NUMERIC {
+        try_as!(Decimal);
     } else if t == &Type::DATE {
         try_as!(NaiveDate);
     } else if t == &Type::TIMESTAMP {
@@ -113,7 +116,7 @@ fn row_value_to_string(row: &tokio_postgres::Row, col_idx: usize) -> String {
         return val.map_or_else(|| "NULL".to_string(), |v| v.to_string());
     }
 
-    // Default: String — covers TEXT, VARCHAR, BPCHAR, NAME, NUMERIC, etc.
+    // Default: String — covers TEXT, VARCHAR, BPCHAR, NAME, and other text-representable types.
     row.try_get::<_, Option<String>>(col_idx)
         .ok()
         .flatten()
