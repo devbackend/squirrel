@@ -29,6 +29,11 @@ pub enum Screen {
         old_name: String,
         input: String,
     },
+    RenameQuery {
+        connection: String,
+        old_name: String,
+        input: String,
+    },
     Results {
         connection: String,
         query: String,
@@ -103,6 +108,9 @@ impl App {
             }
             Screen::RenameConnection { old_name, input } => {
                 self.on_rename_connection(key, terminal, old_name, input).await?
+            }
+            Screen::RenameQuery { connection, old_name, input } => {
+                self.on_rename_query(key, terminal, connection, old_name, input).await?
             }
             Screen::Results { connection, query, result } => {
                 self.on_results(key, connection, query, result)
@@ -262,7 +270,7 @@ impl App {
                 preview = load_preview(&connection, &queries, selected);
             }
 
-            KeyCode::Enter | KeyCode::Char('r') if !queries.is_empty() => {
+            KeyCode::Enter if !queries.is_empty() => {
                 let query = queries[selected].clone();
                 let content = storage::load_query(&connection, &query)?;
                 match storage::load_connection(&connection) {
@@ -274,6 +282,15 @@ impl App {
                     },
                     Err(e) => self.status = Some(format!("Cannot load connection: {e}")),
                 }
+            }
+
+            KeyCode::Char('r') if !queries.is_empty() => {
+                let old_name = queries[selected].clone();
+                return Ok(Some(Screen::RenameQuery {
+                    connection,
+                    old_name,
+                    input: String::new(),
+                }));
             }
 
             KeyCode::Char('e') if !queries.is_empty() => {
@@ -383,6 +400,50 @@ impl App {
         }
 
         Ok(Some(Screen::RenameConnection { old_name, input }))
+    }
+
+    // ── RenameQuery ────────────────────────────────────────────────────────────
+
+    async fn on_rename_query<B: Backend>(
+        &mut self,
+        key: KeyEvent,
+        _terminal: &mut Terminal<B>,
+        connection: String,
+        old_name: String,
+        mut input: String,
+    ) -> Result<Option<Screen>> {
+        match key.code {
+            KeyCode::Esc => {
+                let queries = storage::list_queries(&connection)?;
+                let selected = queries.iter().position(|q| q == &old_name).unwrap_or(0);
+                let preview = load_preview(&connection, &queries, selected);
+                return Ok(Some(Screen::QueryList { connection, queries, selected, preview }));
+            }
+
+            KeyCode::Enter if !input.is_empty() => {
+                let new_name = input.trim().to_string();
+                match storage::rename_query(&connection, &old_name, &new_name) {
+                    Ok(()) => {
+                        let queries = storage::list_queries(&connection)?;
+                        let selected = queries.iter().position(|q| q == &new_name).unwrap_or(0);
+                        let preview = load_preview(&connection, &queries, selected);
+                        self.status = Some(format!("Renamed '{old_name}' → '{new_name}'"));
+                        return Ok(Some(Screen::QueryList { connection, queries, selected, preview }));
+                    }
+                    Err(e) => {
+                        self.status = Some(format!("Rename failed: {e}"));
+                        // Stay on the rename screen so the user can correct input.
+                    }
+                }
+            }
+
+            KeyCode::Char(c) => input.push(if c == ' ' { '_' } else { c }),
+            KeyCode::Backspace => { input.pop(); }
+
+            _ => {}
+        }
+
+        Ok(Some(Screen::RenameQuery { connection, old_name, input }))
     }
 
     // ── Results ────────────────────────────────────────────────────────────────

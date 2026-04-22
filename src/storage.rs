@@ -131,6 +131,22 @@ pub fn delete_query(connection: &str, name: &str) -> Result<()> {
         .with_context(|| format!("deleting {}", path.display()))
 }
 
+/// Renames a query `.sql` file within a connection's queries directory.
+///
+/// # Errors
+///
+/// Returns an error if a query named `new` already exists or if the rename
+/// syscall fails.
+pub fn rename_query(connection: &str, old: &str, new: &str) -> Result<()> {
+    let old_path = query_path(connection, old);
+    let new_path = query_path(connection, new);
+    if new_path.exists() {
+        anyhow::bail!("A query named '{new}' already exists");
+    }
+    std::fs::rename(&old_path, &new_path)
+        .with_context(|| format!("renaming '{}' to '{}'", old_path.display(), new_path.display()))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -249,6 +265,40 @@ mod tests {
             let list = list_connections().unwrap();
             assert!(list.contains(&"alpha".to_string()));
             assert!(list.contains(&"beta".to_string()));
+        });
+    }
+
+    #[test]
+    fn test_rename_query() {
+        with_temp_home(|| {
+            save_connection(&sample_config("db")).unwrap();
+            save_query("db", "old_query", "SELECT 1").unwrap();
+            assert_eq!(list_queries("db").unwrap(), vec!["old_query"]);
+
+            rename_query("db", "old_query", "new_query").unwrap();
+
+            let queries = list_queries("db").unwrap();
+            assert_eq!(queries, vec!["new_query"]);
+
+            let sql = load_query("db", "new_query").unwrap();
+            assert_eq!(sql, "SELECT 1");
+        });
+    }
+
+    #[test]
+    fn test_rename_query_conflicts() {
+        with_temp_home(|| {
+            save_connection(&sample_config("db")).unwrap();
+            save_query("db", "alpha", "SELECT 1").unwrap();
+            save_query("db", "beta", "SELECT 2").unwrap();
+
+            let err = rename_query("db", "alpha", "beta").unwrap_err();
+            assert!(err.to_string().contains("already exists"), "unexpected error: {err}");
+
+            // Both should still exist
+            let queries = list_queries("db").unwrap();
+            assert!(queries.contains(&"alpha".to_string()));
+            assert!(queries.contains(&"beta".to_string()));
         });
     }
 

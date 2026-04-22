@@ -55,13 +55,17 @@ pub fn render(f: &mut Frame, screen: &Screen, status: Option<&str>) {
                 .wrap(Wrap { trim: false });
             f.render_widget(preview_block, panes[1]);
 
-            render_hint(f, status_area, "n: new  e: edit  d: delete  Enter/r: run  ←/Esc: back", status);
+            render_hint(f, status_area, "n: new  r: rename  e: edit  d: delete  Enter: run  ←/Esc: back", status);
         }
         Screen::CreateQueryName { connection, input } => {
             render_name_input(f, main_area, connection, input);
             render_hint(f, status_area, "Enter: open editor  Esc: back", status);
         }
         Screen::RenameConnection { old_name, input } => {
+            render_rename_input(f, main_area, old_name, input);
+            render_hint(f, status_area, "Enter: confirm  Esc: cancel", status);
+        }
+        Screen::RenameQuery { old_name, input, .. } => {
             render_rename_input(f, main_area, old_name, input);
             render_hint(f, status_area, "Enter: confirm  Esc: cancel", status);
         }
