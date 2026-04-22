@@ -68,6 +68,31 @@ pub fn delete_connection(name: &str) -> Result<()> {
         .with_context(|| format!("deleting {}", dir.display()))
 }
 
+/// Renames a connection directory from `old` to `new`.
+///
+/// # Errors
+///
+/// Returns an error if `new` already exists or if the rename syscall fails.
+pub fn rename_connection(old: &str, new: &str) -> Result<()> {
+    let old_dir = connection_dir(old);
+    let new_dir = connection_dir(new);
+    if new_dir.exists() {
+        anyhow::bail!("A connection named '{new}' already exists");
+    }
+    std::fs::rename(&old_dir, &new_dir)
+        .with_context(|| format!("renaming '{}' to '{}'", old_dir.display(), new_dir.display()))?;
+    // The config.toml inside still records the old name — update it.
+    let cfg_path = connection_config_path(new);
+    let content = std::fs::read_to_string(&cfg_path)
+        .with_context(|| format!("reading {}", cfg_path.display()))?;
+    let mut cfg: crate::models::ConnectionConfig =
+        toml::from_str(&content).with_context(|| format!("parsing {}", cfg_path.display()))?;
+    cfg.name = new.to_string();
+    let updated = toml::to_string_pretty(&cfg).context("serializing config")?;
+    std::fs::write(&cfg_path, updated)
+        .with_context(|| format!("writing {}", cfg_path.display()))
+}
+
 pub fn list_queries(connection: &str) -> Result<Vec<String>> {
     let dir = queries_dir(connection);
     if !dir.exists() {
@@ -191,6 +216,39 @@ mod tests {
 
             delete_query("db", "select_all").unwrap();
             assert_eq!(list_queries("db").unwrap(), Vec::<String>::new());
+        });
+    }
+
+    #[test]
+    fn test_rename_connection() {
+        with_temp_home(|| {
+            save_connection(&sample_config("alpha")).unwrap();
+            assert_eq!(list_connections().unwrap(), vec!["alpha"]);
+
+            rename_connection("alpha", "beta").unwrap();
+
+            let list = list_connections().unwrap();
+            assert_eq!(list, vec!["beta"]);
+
+            // config.toml inside should have the updated name
+            let cfg = load_connection("beta").unwrap();
+            assert_eq!(cfg.name, "beta");
+        });
+    }
+
+    #[test]
+    fn test_rename_connection_conflicts() {
+        with_temp_home(|| {
+            save_connection(&sample_config("alpha")).unwrap();
+            save_connection(&sample_config("beta")).unwrap();
+
+            let err = rename_connection("alpha", "beta").unwrap_err();
+            assert!(err.to_string().contains("already exists"), "unexpected error: {err}");
+
+            // Both should still exist
+            let list = list_connections().unwrap();
+            assert!(list.contains(&"alpha".to_string()));
+            assert!(list.contains(&"beta".to_string()));
         });
     }
 

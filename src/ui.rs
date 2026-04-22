@@ -26,7 +26,7 @@ pub fn render(f: &mut Frame, screen: &Screen, status: Option<&str>) {
     match screen {
         Screen::ConnectionList { connections, selected } => {
             render_list(f, main_area, " Squirrel — Connections ", connections, *selected);
-            render_hint(f, status_area, "n: new  e: edit  d: delete  Enter: open  q: quit", status);
+            render_hint(f, status_area, "n: new  r: rename  e: edit  d: delete  Enter: open  q: quit", status);
         }
         Screen::CreateConnection { form, status: form_status } => {
             render_connection_form(f, main_area, form_status.as_deref());
@@ -60,6 +60,10 @@ pub fn render(f: &mut Frame, screen: &Screen, status: Option<&str>) {
         Screen::CreateQueryName { connection, input } => {
             render_name_input(f, main_area, connection, input);
             render_hint(f, status_area, "Enter: open editor  Esc: back", status);
+        }
+        Screen::RenameConnection { old_name, input } => {
+            render_rename_input(f, main_area, old_name, input);
+            render_hint(f, status_area, "Enter: confirm  Esc: cancel", status);
         }
         Screen::Results { connection, query, result } => {
             render_results(f, main_area, connection, query, result);
@@ -181,6 +185,17 @@ fn render_name_input(f: &mut Frame, area: Rect, connection: &str, input: &str) {
 
     let title = format!(" New query for '{connection}' ");
     let content = format!("Name: {input}_");
+    let paragraph = Paragraph::new(content.as_str())
+        .block(Block::default().borders(Borders::ALL).title(title))
+        .style(Style::default().fg(Color::White));
+    f.render_widget(paragraph, dialog);
+}
+
+fn render_rename_input(f: &mut Frame, area: Rect, old_name: &str, input: &str) {
+    let dialog = centered_rect(50, 20, area);
+    f.render_widget(Clear, dialog);
+    let title = format!(" Rename '{old_name}' ");
+    let content = format!("New name: {input}_");
     let paragraph = Paragraph::new(content.as_str())
         .block(Block::default().borders(Borders::ALL).title(title))
         .style(Style::default().fg(Color::White));

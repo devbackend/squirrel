@@ -25,6 +25,10 @@ pub enum Screen {
         connection: String,
         input: String,
     },
+    RenameConnection {
+        old_name: String,
+        input: String,
+    },
     Results {
         connection: String,
         query: String,
@@ -97,6 +101,9 @@ impl App {
             Screen::CreateQueryName { connection, input } => {
                 self.on_create_query_name(key, terminal, connection, input).await?
             }
+            Screen::RenameConnection { old_name, input } => {
+                self.on_rename_connection(key, terminal, old_name, input).await?
+            }
             Screen::Results { connection, query, result } => {
                 self.on_results(key, connection, query, result)
             }
@@ -166,6 +173,11 @@ impl App {
                 }
                 connections = storage::list_connections()?;
                 selected = selected.min(connections.len().saturating_sub(1));
+            }
+
+            KeyCode::Char('r') if !connections.is_empty() => {
+                let old_name = connections[selected].clone();
+                return Ok(Some(Screen::RenameConnection { old_name, input: String::new() }));
             }
 
             _ => {}
@@ -330,6 +342,47 @@ impl App {
         }
 
         Ok(Some(Screen::CreateQueryName { connection, input }))
+    }
+
+    // ── RenameConnection ───────────────────────────────────────────────────────
+
+    async fn on_rename_connection<B: Backend>(
+        &mut self,
+        key: KeyEvent,
+        _terminal: &mut Terminal<B>,
+        old_name: String,
+        mut input: String,
+    ) -> Result<Option<Screen>> {
+        match key.code {
+            KeyCode::Esc => {
+                let connections = storage::list_connections()?;
+                let selected = connections.iter().position(|c| c == &old_name).unwrap_or(0);
+                return Ok(Some(Screen::ConnectionList { connections, selected }));
+            }
+
+            KeyCode::Enter if !input.is_empty() => {
+                let new_name = input.trim().to_string();
+                match storage::rename_connection(&old_name, &new_name) {
+                    Ok(()) => {
+                        let connections = storage::list_connections()?;
+                        let selected = connections.iter().position(|c| c == &new_name).unwrap_or(0);
+                        self.status = Some(format!("Renamed '{old_name}' → '{new_name}'"));
+                        return Ok(Some(Screen::ConnectionList { connections, selected }));
+                    }
+                    Err(e) => {
+                        self.status = Some(format!("Rename failed: {e}"));
+                        // Stay on the rename screen so the user can correct input.
+                    }
+                }
+            }
+
+            KeyCode::Char(c) => input.push(if c == ' ' { '_' } else { c }),
+            KeyCode::Backspace => { input.pop(); }
+
+            _ => {}
+        }
+
+        Ok(Some(Screen::RenameConnection { old_name, input }))
     }
 
     // ── Results ────────────────────────────────────────────────────────────────
